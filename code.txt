@@ -1,0 +1,90 @@
+#for open cv
+import cv2 
+import random
+#read from img file
+import os
+#dependency for open cv and matplotlib
+import numpy as np  
+import matplotlib.pyplot as plt
+import pytesseract
+
+def plot_images(img1, img2, title1="", title2=""):
+    #size of graph
+    fig = plt.figure(figsize=[15,15])
+    #one row two col and 1st of them
+    ax1 = fig.add_subplot(121)
+    #showing gray scale image (here colored img is not imp) (grayscale imgs are faster as coloured imgs have 3 channels)
+    ax1.imshow(img1, cmap="gray")
+    #no ticks on x axis and y-axis so empty
+    # labels on axis 
+    ax1.set(xticks=[], yticks=[], title=title1)
+
+    ax2 = fig.add_subplot(122)
+    ax2.imshow(img2, cmap="gray")
+    ax2.set(xticks=[], yticks=[], title=title2)
+
+#after reading image from cv2 we have a numpy array
+image = cv2.imread("car_1.jpg")
+# grayscale images have values ranging btw 0(black)-255(white)
+gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)   
+plot_images(image, gray)
+
+#to remove noise (especially from background) region of interest is not altered
+#d – Diameter of each pixel neighborhood that is used during filtering. If it is non-positive, it is computed from sigmaSpace.
+#sigmaColor – Filter sigma in the color space. A larger value of the parameter means that farther colors within the pixel neighborhood (see sigmaSpace ) will be mixed together, resulting in larger areas of semi-equal color.
+#sigmaSpace – Filter sigma in the coordinate space. A larger value of the parameter means that farther pixels will influence each other as long as their colors are close enough (see sigmaColor ). When d>0 , it specifies the neighborhood size regardless of sigmaSpace . Otherwise, d is proportional to sigmaSpace 
+blur = cv2.bilateralFilter(gray, 11,90, 90)
+plot_images(gray, blur)
+
+#edge detection- run filters horizontally and vertically returns a img that only has edges 
+#whiteness of number plate and blackness of car are not imp for us in localizing number plate
+#The smallest value between threshold1 and threshold2 is used for edge linking. The largest value is used to find initial segments of strong edges.
+edges = cv2.Canny(blur, 30, 200)
+plot_images(blur, edges)
+
+#contours- curves joining continuous points have same color/inttensity
+#copy used as findContours func changes the image
+#cnts is a list of list
+#CV_RETR_LIST retrieves all of the contours without establishing any hierarchical relationships.
+#CV_CHAIN_APPROX_SIMPLE compresses horizontal, vertical, and diagonal segments and leaves only their end points. For example, an up-right rectangular contour is encoded with 4 points.
+
+cnts, new = cv2.findContours(edges.copy(), cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+
+#seeing contours on the img
+image_copy = image.copy()
+_ = cv2.drawContours(image_copy, cnts, -1, (255,0,255),2)
+plot_images(image, image_copy)
+
+image_copy = image.copy()
+#cnts : contours, -1 means draw every contour,color to draw contour, weight of lines used to draw contours 
+_ = cv2.drawContours(image_copy, cnts, -1, (255,0,255),2)
+#i filtering was not done many contours would have been found
+plot_images(image, image_copy)
+
+#sort contours on basis of area, highest to lowest, top 30
+cnts = sorted(cnts, key=cv2.contourArea, reverse=True)[:30]
+
+plate = None
+for c in cnts:
+    #calc perimeter of contour
+    #flag indicating contour is closed
+    perimeter = cv2.arcLength(c, True)
+    #no. of side bounded by the contour
+    #returns edges
+    #epsilon – Parameter specifying the approximation accuracy. This is the maximum distance between the original curve and its approximation.
+    #closed – true.
+    edges_count = cv2.approxPolyDP(c, 0.02 * perimeter, True)
+    if len(edges_count) == 4:
+        #identify the regions of number plate
+        x,y,w,h = cv2.boundingRect(c)
+        #numpy array
+        plate = image[y:y+h, x:x+w]
+        break
+
+#save img 
+cv2.imwrite("plate.png", plate)
+plot_images(plate, plate)
+
+#img->text tessaract
+text = pytesseract.image_to_string(plate, lang="eng")
+print(text)
